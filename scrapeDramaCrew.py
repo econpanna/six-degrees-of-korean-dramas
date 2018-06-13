@@ -22,10 +22,11 @@ def no_comma_filter(text):
 
 # 데이터 불러오기
 filename = ''
-# 실행하기 전에 파일 경로 확인해야 해서 일단 지워놓음, 예) filename = 'dramaSummaryInfo.csv'
-# 지금은 summary 정보가 있어야 하므로 drDaumTvProgramId.csv 말고 dramaSummaryInfo.csv
+# 실행하기 전에 파일 경로 확인해야 해서 일단 지워놓음, 예) filename = 'dramaSummaryInfo_filtered.csv'
+# dramaSummaryInfo_filtered.csv : summary 스크래핑 후 R로 필터링한 데이터
 df = pd.read_csv(filename)
 drama_id_list = list(df['drama_id'])[1000:]
+# crew 데이터가 너무 많아서 list(df['drama_id'])[0:500] 부터 시작해서 500개씩 끊어서 실행
 # drama_id_list = [49640, 48074, 49643, 49647, 63768] ## 테스트 코드
 
 print('Start with scraping')
