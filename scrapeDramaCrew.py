@@ -26,6 +26,7 @@ filename = ''
 # dramaSummaryInfo_filtered.csv : summary 스크래핑 후 R로 필터링한 데이터
 df = pd.read_csv(filename)
 drama_id_list = list(df['drama_id'])[1000:]
+scrap_no = 3
 # crew 데이터가 너무 많아서 list(df['drama_id'])[0:500] 부터 시작해서 500개씩 끊어서 실행
 # drama_id_list = [49640, 48074, 49643, 49647, 63768] ## 테스트 코드
 
@@ -154,6 +155,6 @@ scrapFailInfo = pd.DataFrame(scrap_fail_infos)
 
 # csv로 저장
 # 수집한 데이터
-dramaCrews.to_csv('dramaCrewInfo.csv', encoding='utf-8')
+dramaCrews.to_csv('dramaCrewInfo' + str(scrap_no) + '.csv', encoding='utf-8')
 # 실패 로그
-scrapFailInfo.to_csv('failedCrewScrapInfo.csv', encoding='utf-8')
+scrapFailInfo.to_csv('failedCrewScrapInfo' + str(scrap_no) + '.csv', encoding='utf-8')
