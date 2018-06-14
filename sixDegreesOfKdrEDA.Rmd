@@ -1,0 +1,201 @@
+---
+title: "한드판 케빈 베이컨 놀이 - 데이터 전처리 및 EDA"
+# author: "Kyungmin Lee"
+date: Dec 14, 2017
+output: html_notebook
+---
+
+```{r, message=FALSE}
+rm(list=ls())
+# 패키지 불러오기
+library(tidyverse)
+```
+
+```{r, message=FALSE}
+# 드라마 crew(배우&제작진) 데이터 불러오기
+list.files(pattern = 'Crew')
+crew_list <- paste0(list.files(pattern = 'Crew'))
+all_crew_aggregated <- bind_rows(
+  lapply(
+    crew_list, read.csv, fileEncoding='utf-8', stringsAsFactors = F
+  )
+)
+str(all_crew_aggregated) # dim: 44953 8
+names(all_crew_aggregated)
+```
+
+```{r}
+# 불러온 데이터에서 배우 데이터만 가져오기
+all_crew_aggregated %>% 
+  select(crew_type) %>% 
+  unique()
+dr_actors <- all_crew_aggregated %>% 
+  filter(crew_type == '배우') %>% 
+  select(drama_id, crew_type_seq, person_code, person_name)
+dr_actors %>% str() # dim: 33050 4
+dr_actors %>% select(drama_id) %>% is.na() %>% sum() # 0 na 없음
+dr_actors %>% head() # 미리보기
+```
+
+```{r}
+# 드라마 summary 데이터 불러오기
+all_sum <- read.csv(
+  'dramaSummaryInfo_filtered.csv', fileEncoding = 'utf-8', stringsAsFactors = F
+  )
+all_sum %>% str() # dim: 1419 11
+```
+
+```{r}
+# 불러온 드라마 데이터에서 id, title, start연도 컬럼만 가져오기 (+ 시트콤, 2017년 데이터 제외)
+all_sum %>%
+  select(genre) %>% table() # 드라마 1358개, 시트콤 61개
+dr_sums <- all_sum %>%
+  separate(col = start_date, into = c('year', 'start_date'), sep=4) %>%
+  filter(genre == '드라마' & year < 2017) %>% # 추가된 데이터 제외 기준
+  select(drama_id, title, year)
+dr_sums %>% str()
+dr_sums %>% select(drama_id) %>% is.na %>% sum() # 0 na 없음
+dr_sums %>% select(title) %>% is.na %>% sum() # 0 na 없음
+dr_sums %>% select(year) %>% is.na %>% sum() # 0 na 없음
+dr_sums %>% filter(title == '') # 공백 없음
+dr_sums %>% filter(year == '') # 공백 없음
+dr_sums %>%
+  # mutate(chr_cnt = lapply(year, nchar)) %>%
+  mutate(chr_cnt = sapply(year, nchar)) %>%
+  select(chr_cnt) %>%
+  unique() # year 모두 네 글자 확인
+dr_sums$year <- as.numeric(dr_sums$year) # year num타입으로 변환
+dr_sums %>% str()
+dr_sums %>% head() # 미리보기
+```
+
+```{r}
+# 드라마 & 배우 데이터 병합
+dr_dat <- dr_sums %>%
+  left_join(dr_actors, by = 'drama_id') %>%
+  select(drama_id, title, person_code, person_name, crew_type_seq, year) %>%
+  dplyr::arrange(year)
+dr_dat %>% dim() # 31424     6
+# dr_dat %>% View() # 확인
+# 전원일기, 대추나무 사랑걸렸네, MBC 베스트극장 삭제
+# : 80년대, 90년대 초반부터 방영. 단막극 자체는 문제가 아니지만 출연진 정보가 제대로 없음
+# 부부클리닉 사랑과 전쟁 시즌1(1999), 부부클리닉 사랑과 전쟁 시즌2 는 일단 남겨둠..
+dr_dat2 <- dr_dat %>%
+  filter(year > 1998)
+# dr_dat2 %>% View()
+dr_dat2 %>% dim() # 31303     6
+dr_dat2 %>% head()
+```
+
+```{r}
+# 데이터 이상 확인 및 전처리
+dr_dat2 %>% select(person_code) %>% is.na() %>% sum() # 코드 없는 배우 831명
+dr_dat3 <- dr_dat2[!is.na(dr_dat2$person_code),] # 코드 없는 배우 일단 삭제
+dr_dat3 %>% nrow() # 30472
+dr_dat3 %>% select(person_code) %>% unique() %>% nrow() # 코드있는 총 배우 수 5378
+dr_dat3 %>% select(person_name) %>% is.na() %>% sum() # 0 배우 이름에 na 없음 
+dr_dat3 %>% filter(person_name=='') # 배우 이름 '' 없음
+dr_dat3 %>% select(drama_id, person_code) %>% duplicated() %>% sum() # 헐?? 134개 중복
+dr_dat3 %>% 
+  group_by(drama_id, person_code) %>% 
+  summarise(dup_cnt = n()) %>% 
+  filter(dup_cnt > 1)  # 찾아보니 1인 다역인 경우 중복..
+# 일단 삭제
+dr_dat4 <- dr_dat3[!duplicated(dr_dat3[, c('drama_id', 'person_code')]), ]
+dr_dat4 %>% nrow() # 30338
+dr_dat4 %>% select(drama_id, person_code) %>% duplicated() %>% sum() # 0, 이제 없음
+dr_dat4 %>% distinct(person_code, person_name) %>% nrow() # 5394 ??
+dr_dat4 %>% distinct(person_code) %>% nrow() # 5378 
+# 같은 코드에 이름이 여러개인 배우가 있음
+dr_dat4 %>%  # 16명!
+  distinct(person_code, person_name) %>%
+  group_by(person_code) %>%
+  summarise(dup_cnt = n()) %>%
+  filter(dup_cnt > 1)
+code_with_dup_name <- dr_dat4 %>%
+  distinct(person_code, person_name) %>%
+  right_join(dr_dat4 %>%
+               distinct(person_code, person_name) %>%
+               group_by(person_code) %>%
+               summarise(dup_cnt = n()) %>%
+               filter(dup_cnt > 1) %>%
+               select(person_code)) %>%
+  arrange(person_code)
+code_with_dup_name
+# ㅋㅋㅋ...
+# 728321 강주상->강인기인데 daum이 잘못됨
+# 개명: 이잎새->이도은, 최강원->강산
+# 성이 있는 이름 우선: 시원->최시원, 준호->이준호, 제이->김견우, 찬성->황찬성, 
+#                     소희->안소희, 택연->옥택연, 수영->최수영, 아이유->이지은, 
+#                     의현->류의현, 해령->나해령, 디오->도경수, 엔->차학연, 설현->김설현
+real_names <- code_with_dup_name %>%
+  filter(person_name %in% c('최시원', '이도은', '이준호', '김견우', '황찬성', 
+                            '안소희', '옥택연', '최수영', '이지은', '강인기', 
+                            '류의현', '나해령', '도경수', '차학연', '김설현', '강산'))
+for (i in 1:nrow(real_names)){
+  dr_dat4$person_name[
+    dr_dat4$person_code == real_names$person_code[i]
+    ] <- real_names$person_name[i]
+}
+dr_dat4 %>% distinct(person_code, person_name) %>% nrow() # 5378
+dr_dat4 %>% distinct(person_code) %>% nrow() # 5378 
+dr_dat4 %>% dim() # 30338     6
+dr_dat4 %>% head()
+```
+
+```{r}
+# 배우별 출연한 드라마 수 분석
+# 많은 순으로 10명
+dr_dat4 %>%
+  group_by(person_code) %>%
+  summarise(dr_cnt = n()) %>%
+  left_join(dr_dat4 %>%
+              distinct(person_code, person_name), by = 'person_code') %>%
+  arrange(desc(dr_cnt)) %>% 
+  head(10)  
+# 적은 순으로
+dr_dat4 %>%
+  group_by(person_code) %>%
+  summarise(dr_cnt = n()) %>%
+  left_join(dr_dat4 %>%
+              distinct(person_code, person_name), by = 'person_code') %>%
+  arrange(dr_cnt) %>%
+  head() # 최소 작품 수는 1개
+```
+
+```{r}
+# 다작 배우 top 3의 작품들 
+dr_dat4 %>%
+  group_by(person_code) %>%
+  summarise(dr_cnt = n()) %>%
+  top_n(3, dr_cnt) %>%
+  arrange(desc(dr_cnt)) %>%  
+  left_join(dr_dat4, by='person_code')
+```
+
+```{r}
+# 드라마별 배우 수
+# 많은 순으로 10개
+dr_dat4 %>%
+  group_by(drama_id) %>%
+  summarise(act_cnt = n()) %>%
+  left_join(dr_dat4 %>%
+              distinct(drama_id, title), by = 'drama_id') %>%
+  arrange(desc(act_cnt)) %>%
+  head(10) 
+
+# 적은 순으로
+dr_dat4 %>%
+  group_by(drama_id) %>%
+  summarise(act_cnt = n()) %>%
+  left_join(dr_dat4 %>%
+              distinct(drama_id, title), by = 'drama_id') %>%
+  arrange(act_cnt) %>%
+  head()# 최소 배우 수는 1명부터..
+```
+
+```{r}
+# dr_dat4만 저장하기위해 나머지 삭제
+rm(list=ls()[ls()!='dr_dat4'])
+# 우측 환경창에서 저장
+```
