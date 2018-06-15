@@ -1,0 +1,323 @@
+---
+title: "한국 드라마 버전 케빈 베이컨 놀이"
+# author: "Kyungmin Lee"
+date: Dec 14, 2017
+output: html_notebook
+---
+  
+## Intro
+
+정부 기관에서 지원하는 데이터 분석 교육 과정에서 수행한 팀 프로젝트.
+케빈 베이컨의 여섯 다리(Six Degrees of Kevin Bacon)는 같이 출연한 영화를 연결 고리로 어떤 배우와 케빈 베이컨까지 최단 연결 고리를 만드는 놀이이다([위키백과 참조](https://ko.wikipedia.org/wiki/%EC%BC%80%EB%B9%88_%EB%B2%A0%EC%9D%B4%EC%BB%A8%EC%9D%98_%EC%97%AC%EC%84%AF_%EB%8B%A4%EB%A6%AC)). 세상의 모든 사람들이 최대 6단계 이내에서 모두 연결될 수 있다는 이론을 다작 배우 케빈 베이컨을 통해 증명한 것인데, 팀원들이 드라마를 좋아하여 한국 드라마에서도 6단계 법칙이 성립하는지 확인해보기로 하였다.
+
+크게 3 단계, **웹 데이터 수집 및 정제, 사회연결망분석(Social Network Analysis), 시각화**의 과정을 거쳤다. 
+SNA는 MrKevinNa 깃헙 계정의 [한국(영화)판 케빈베이컨 놀이](https://github.com/MrKevinNa/SixDegreesOfKoreanActors)를 참고하였다(2018년 6월 현재, 내용이 업데이트되어 많이 바뀌어 있다).
+
+## 1. 웹 데이터 수집 및 정제
+### 1-1. 웹 데이터 수집
+* 파이썬을 써보니 R보다 훨씬 체계적이고 활용도도 높은 언어라는 생각에 이번 크롤링은 잘 모르지만 파이썬을 이용해보기로 함 (구글신에 의존하며 작성).  
+
+* html과 BeautifulSoup 라이브러리 사용.  
+
+* 문제: 한국의 드라마들을 한 곳에 정리해서 제공해주는 서비스가 없음. 방송사에도 없고 포털에도 없음.
+특정 드라마에 대한 정보를 알고 싶다면 포털에서 검색하는 게 가장 좋은(가장 믿을 만하고 정리된 형태의 정보를 얻을 수 있는) 방법이지만, 어떤 조건의(예, 시기별, 장르별, 방송사별 등등) 드라마를 리스트 형식으로 제공하는 곳은 없음.  
+
+* 해결: 고민하다 [드조위키](https://www.djowiki.com)라는 위키를 발견하여 우선 아래와 같은 ~~삽질로~~단계로 크롤링을 마침.  
+1. 드조위키에서 우리가 정한 시기(2000~2018년)의 드라마 리스트를 요청하는 url 크롤링 [코드 보기](https://github.com/econpanna/six-degrees-of-korean-dramas/blob/master/scrapeDrCateLinksFromDjo.py)
+2. 1에서 얻은 url들로 드조위키에서 드라마 제목 크롤링 [코드 보기](https://github.com/econpanna/six-degrees-of-korean-dramas/blob/master/scrapeDrListFromDjo.py)
+3. 2에서 얻은 드라마 제목들로 Daum 포털에서 프로그램ID(Daum에서 정한)를 크롤링 [코드 보기](https://github.com/econpanna/six-degrees-of-korean-dramas/blob/master/scrapeDramaIds.py)
+4. 3에서 누락된 정보들을 팀원들이 직접 검색해서 추가한 데이터 병합(직접 수정하면서 csv 파일이 어딘가 깨짐) [코드 보기](https://github.com/econpanna/six-degrees-of-korean-dramas/blob/master/mergeTwoData.py)
+5. 3, 4에서 얻은 프로그램ID들로 Daum 포털에서 드라마 정보 크롤링 [코드 보기](https://github.com/econpanna/six-degrees-of-korean-dramas/blob/master/scrapeDramaSummary.py)
+6. 5에서 얻은 드라마 정보들을 전처리 & 필터링 [코드 보기](https://github.com/econpanna/six-degrees-of-korean-dramas/blob/master/dramaSumInfoFiltering.R)
+7. 6에서 추려낸 드라마들의 배우 정보를 크롤링 [코드 보기](https://github.com/econpanna/six-degrees-of-korean-dramas/blob/master/scrapeDramaCrew.py)  
+
+* 회고: Daum에서 프로그램ID를 따는 규칙을 알 수가 없었고, 대략 40000 ~ 90000 사이에서 ID를 랜덤 생성하는 것 같다는 짐작만 가지고 5만개의 숫자를 파라미터로 던져서 프로그램ID를 크롤링해오는 건 어려움이 많은 작업일 것이라고 생각했으나...
+나중에 해보니 이게 더 간단하고 빠른 작업이 되었을 것 같음. 
+다시 만든 프로그램ID 크롤링 코드는 [여기에](https://github.com/econpanna/six-degrees-of-korean-dramas/blob/master/scrapeAllProgramIds.py)
+
+### 1-2. 데이터 전처리 및 살펴보기
+* 자세한 내용은 [여기에](https://econpanna.github.io/six-degrees-of-korean-dramas/sixDegreesOfKdrEDA.html)
+
+### 1-3. 데이터 변환
+```{r, message=FALSE}
+rm(list=ls())
+## 패키지 불러오기
+library(tidyverse) 
+library(reshape2)
+```
+
+```{r}
+## Rdata 불러오기
+list.files(pattern = 'RData')
+load('sixDegreesOfKdrData1.RData')
+```
+
+```{r}
+## reshape2 패키지의 acast() 함수를 이용하여 영화-배우 행렬 생성
+temp_for_cast <- dr_dat4 %>%
+  select(drama_id, person_code) %>%
+  mutate(check = 1) %>% # 모든 행마다 1, 즉 해당 영화 출연횟수, dr_actor_mat 행렬 cell에 넣어서 계산될 값
+  arrange(drama_id)
+temp_for_cast %>% head() # 미리보기
+```
+
+```{r}
+dr_actor_mat <- acast(
+  data = temp_for_cast, formula = drama_id ~ person_code, fill = 0
+  )
+dr_actor_mat %>% dim # 1342 5378
+dr_actor_mat[1:12, 1:12] # 12행 12열만 미리보기
+```
+
+```{r}
+## 배우 간 동시 출연 횟수를 행렬로 만들기 -> 배우-배우 행렬. cell의 값은 동시 출연 횟수
+# 배우코드로 행과 열을 이루어야 하므로 드라마-배우 행렬을 전치한 후 행렬 곱을 실행
+actor_mul <- t(dr_actor_mat) %*% dr_actor_mat # 1분 정도 소요
+dim(actor_mul) # 5378 5378
+
+# 같은 드라마에 출연한 적이 있으면 1, 없으면 0을 할당
+actor_mul <- ifelse(actor_mul > 0, 1, 0) # KevinNa에서는 2회 이상을 기준으로 했는데 우리는 1인듯
+
+# 같은 배우의 출연횟수(대각원소)는 0으로 치환함 
+diag(actor_mul) <- 0
+
+actor_mul[1:12, 1:12]
+
+# 모든 행의 합이 0인 행 삭제하기 위해 위치 확인
+zero_rows <- as.numeric(which(rowSums(actor_mul) == 0))
+zero_rows # 없음
+
+# 정방행렬을 유지하기 위해 열도 함께 삭제함(KevinNa) -> 현재 모든 행의 합이 0인 행이 없으므로 삭제 안함
+# actor_mul <- actor_mul[-zero_rows, -zero_rows] 
+```
+
+## 2. 사회연결망분석 - 케빈 베이컨 찾기
+### 2-1. 6단계 법칙 확인
+```{r, message=FALSE}
+## 패키지 불러오기
+library(igraph)
+```
+
+```{r}
+# cell value가 1인 컬럼 번호 가져오기 -> 라고 써있는데 코드는 row번호를 가져오는 것임. 어쨌든 정방행렬이므로 결과가 달라지진 않음.
+ones <- list()
+for (i in 1:nrow(actor_mul)) {
+  ones[[i]] <- as.numeric(which(actor_mul[,i] == 1))
+} 
+# 행이름과 열이름으로 데이터프레임 생성하기 -> actor to actor link 정보가 있는 데이터 프레임
+actors_links_df <- data.frame()
+# 코드 수행 시간 약 13분...
+for (i in 1:length(ones)) {
+  i_actor_links <- data.frame(from = rownames(actor_mul)[i], # 사실 col names
+                                to = colnames(actor_mul)[ones[[i]]]) # 사실 row names
+  actors_links_df <- rbind(actors_links_df, i_actor_links)
+} 
+dim(actors_links_df) # 799894     2
+actors_links_df_2 <- unique(actors_links_df)
+dim(actors_links_df_2) # 799894     2  중복은 없었음
+```
+
+```{r}
+head(actors_links_df_2, 20) # 미리보기
+```
+
+```{r}
+# graph 객체를 생성 -> edges(links)와 vertices(nodes) 정보를 담고 있음
+graph_obj <- graph.data.frame(actors_links_df_2, directed = FALSE) 
+class(graph_obj) # igraph
+print(graph_obj, e=TRUE, v=TRUE)
+```
+
+```{r}
+# 각 노드(배우)별 최단거리 구하기
+short_paths_by_actor <- shortest.paths(graph_obj) # 약 1분 소요
+
+# 범위 확인
+# 최대값이 Inf면 함께 출연하지 않은 배우들이 있는 것.
+range(short_paths_by_actor) # 0 5  # 최대값 5. Inf 없음
+```
+#### 가장 긴 연결이 5단계를 거친다. 즉, 6단계 법칙이 성립한다.
+
+### 2-2. 최단거리 top 20
+```{r}
+# KevinNa에서는 연결이 안되는 배우 간 거리를 99로 치환함
+# 아래는 그 이유와 방법 설명. 이 데이터에서는 Inf 없으므로 필요없음. 
+# NA로 변경하면, 나중에 평균에서 제외되므로 오히려 무명의 배우가 가장 짧은 결과를 보이기 때문
+# short_path <- ifelse(short_path == Inf, 99, short_path)
+# range(short_path) # 0 99  
+```
+
+```{r}
+# 최단거리의 행 기준 평균 구하기 -> 배우별 다른 배우들과의 최단거리 평균
+short_path_mean <- as.data.frame(rowMeans(short_paths_by_actor))
+
+# 최단거리의 평균 범위 확인
+summary(short_path_mean)
+head(short_path_mean)
+```
+
+```{r}
+# 배우코드 컬럼 생성 
+short_path_mean$actor_code <- rownames(short_paths_by_actor)
+head(short_path_mean)
+```
+
+```{r}
+# 행번호는 초기화하고, 컬럼명 새로 지정
+rownames(short_path_mean) <- c()
+colnames(short_path_mean) <- c('shortpath_mean','person_code')
+head(short_path_mean)
+```
+
+```{r}
+# actors 객체에 병합한 후 정리하기 -> dr_dat4(배우별 출연 작품 수 정보)와 병합
+dr_cnt_by_actor <- dr_dat4 %>%
+  group_by(person_code) %>%
+  summarise(dr_cnt = n()) %>%
+  left_join(dr_dat4 %>%
+              distinct(person_code, person_name), by = 'person_code') %>%
+  arrange(desc(dr_cnt))
+# dr_cnt_by_actor %>% class # "tbl_df"     "tbl"        "data.frame"
+# dr_cnt_by_actor %>% dplyr::groups() # NULL
+shortpath_mean_by_actor <- merge(x = dr_cnt_by_actor, 
+                                 y = short_path_mean, 
+                                 by = 'person_code', 
+                                 all.x = TRUE)
+```
+
+```{r}
+dim(shortpath_mean_by_actor) # 5378 4
+head(shortpath_mean_by_actor)
+```
+
+```{r}
+sum(is.na(shortpath_mean_by_actor$shortpath_mean)) # 0
+
+# NA인 행 제거 ->  NA인 행 없으므로 수행하지 않음
+# shortpath_mean_by_actor2 <- shortpath_mean_by_actor[!is.na(shortpath_mean_by_actor$shortpath_mean), ]
+```
+
+```{r}
+# 최단거리의 평균값이 작은 순서대로 오름차순 정렬 후 상위 20명 확인
+shortpath_mean_by_actor %>% 
+  arrange(shortpath_mean) %>% 
+  head(20)
+```
+#### 최단거리 평균이 가장 짧은 배우는 민준현씨!
+
+### 2-3. 중심성 top 20
+중개중심성(betweenness centrality)과 연결중심성(degree centrality)
+```{r, message=FALSE}
+# 패키지 불러오기
+library(network)
+library(sna)
+library(GGally)
+library(scales)
+```
+
+```{r}
+# actor_mul의 행이름, 열이름을 배우 이름으로 변경
+# 현재 행렬은 5378명의 배우코드가 오름차순으로 정렬되어 있음 -> 오름차순인지 어떻게..??
+dim(actor_mul)
+rownames(actor_mul[1:20,])
+```
+```{r}
+# dr_cnt_by_actor(데이터 프레임)에서 배우코드를 오름차순 정렬
+dr_cnt_by_actor_1 <- dr_cnt_by_actor %>% 
+  arrange(person_code)
+# actor_mul 행이름과 매칭되는 배우이름만 가져옴 
+actor_names <- dr_cnt_by_actor_1$person_name[
+  dr_cnt_by_actor_1$person_code %in% rownames(actor_mul)
+  ]
+length(actor_names) # 5378
+```
+
+```{r}
+# 가져온 배우이름 확인
+actor_names[1:20]
+```
+
+```{r}
+# 배우코드와 이름이 순서 맞는지 확인 -> 맞는듯.. 그래도.?
+head(dr_cnt_by_actor_1[dr_cnt_by_actor_1$person_code %in% rownames(actor_mul), ], 20)
+```
+
+```{r}
+# 행이름 & 열이름 바꾸기
+rownames(actor_mul) <- colnames(actor_mul) <- actor_names
+actor_mul[1:11,1:11] # 확인
+```
+
+```{r}
+# 배우 간 동시 출연 여부 행렬(actor_mul)을 이용하여 
+# 네트워크 맵에 필요한 네트워크 객체 생성
+# 방향성이 없는 "무향 네트워크"로 생성하기 위해 directed 인자에 FALSE 할당
+net_actors <- network(x = actor_mul, directed = FALSE) # 1분 안걸림
+```
+
+```{r}
+summary(net_actors) # 어떻게 보는건지 좀 더 알아보기..
+```
+
+```{r}
+# 각 노드별 중개중심성(betweenness centrality) 계산
+# 중개중심성은 노드와 노드를 연결해주는 거리가 짧을수록 큰 값을 가짐
+# 중개중심성이 클수록 중심(hub) 역할을 하는 노드로 간주
+# [주의] igraph 패키지의 betweenness() 함수와 충돌 가능!!
+
+# !!주의!! 약 45분 소요......
+btwn_centrl <- sna::betweenness(net_actors)
+```
+
+```{r}
+class(btwn_centrl) # numeric
+length(btwn_centrl) # 5378
+```
+
+```{r}
+# 각 꼭지점별 연결중심성(degree centrality) 계산
+# 연결중심성은 하나의 노드에 연결되어 있는 다른 노드의 수
+# [주의] igraph 패키지의 degree() 함수와 충돌 가능!!
+
+degree_centrl <- sna::degree(net_actors)
+```
+
+```{r}
+class(degree_centrl) # numeric
+length(degree_centrl) # 5378
+```
+
+```{r}
+# 중개중심성과 연결중심성 높은 배우 리스트 확인을 위해 데이터프레임으로 정리하기 
+actors_sna_df <- data.frame(person_code = rownames(actor_mul),
+                            btwn_centrl = btwn_centrl,
+                            degree_centrl = degree_centrl)
+# View(actors_sna_df)
+head(actors_sna_df)
+```
+
+```{r}
+# 중개중심성(betweenness centrality) 상위 20명 확인
+actors_sna_df_orderbybtw <- actors_sna_df[order(actors_sna_df$btwn_centrl, decreasing = TRUE),]
+head(actors_sna_df_orderbybtw, 20)
+```
+#### 중개중심성이 가장 높은 배우는 김종호씨!
+연결중심성도 높지만 2위 보단 낮음. person_code 다시 가져와야 할 듯..
+
+```{r}
+# 이번에는 연결중심성(degree centrality) 상위 20명 확인
+actors_sna_df_orderbydgr <- actors_sna_df[order(actors_sna_df$degree_centrl, decreasing = TRUE),]
+head(actors_sna_df_orderbydgr, 20)
+```
+#### 연결중심성이 가장 높은(=가장 많은 배우들과 함께 출연한) 배우는 민준현씨!
+중심성 척도 종류에 따라 순위 변동이 좀 있어 보이는 사람은 김혜옥, 안내상, 손정림씨..?
+```{r}
+# Rdata 저장
+```
+
+## 3. 시각화
+* R 시각화는 [여기에](https://econpanna.github.io/six-degrees-of-korean-dramas/sixDegreesOfKdrVis.html)
+* 팀원이 구현한 D3 시각화 및 팀 프로젝트 결과물은 [여기에서 보기](https://yonjjang.github.io/web_demo_v4/index.html)
+
+### 분석 및 시각화 좀 더 보완해 볼 것  
+### To be continued...
